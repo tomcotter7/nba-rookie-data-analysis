@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import seaborn as sns
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
 from sklearn import svm
 from sklearn.ensemble import RandomForestClassifier
 from hyperopt import tpe, hp, fmin, STATUS_OK, Trials
@@ -45,8 +46,11 @@ corr = df[['GP', 'MIN', 'PTS', 'FGM', 'FGA', 'FG%', '3PM', '3PA', '3P%',
 mask = np.triu(np.ones_like(corr, dtype=bool))
 f, ax = plt.subplots(figsize=(11, 9))
 cmap = sns.diverging_palette(230, 20, as_cmap=True)
-sns.heatmap(corr, mask=mask, cmap=cmap, vmax=1, vmin=-1, center=0,
+heatmap = sns.heatmap(corr, mask=mask, cmap=cmap, vmax=1, vmin=-1, center=0,
             square=True, linewidths=.5, cbar_kws={"shrink": .5})
+heatmap.set(title="Correlation of features")
+fig = heatmap.get_figure()
+fig.savefig("graphs/heatmap.png")
 
 
 # %% Compare some of the highly correlated variables split by the target variable
@@ -63,20 +67,22 @@ sns.scatterplot(ax=axes[2], x="REB", y="BLK", hue="TARGET_5Yrs", data=df)
 axes[2].set_title("Rebounds vs Blocks")
 
 plt.show()
+fig.savefig("graphs/comparisions.png")
 
 # Now let's split the data into test and training and build some models.
 # The models I plan to use are:
 # SVM
 # Random Forest
-# Also, let's run the SHAP algorithm for explainability
 
 # %% Split the data into features and labels
 # Also, remove the name of the player, as this does not matter
 x, y = df.iloc[:, 1:-1], df.iloc[:, [-1]].astype(int)
 # Normalize the data
 scaler = StandardScaler()
-x = scaler.fit_transform(x)
+x = scaler.fit_transform(x.to_numpy())
+print(x)
 y = y.to_numpy()
+
 
 # %% BayesianSearch to optimize hyper-params
 space = {
@@ -169,8 +175,19 @@ best = fmin(
 print("Best: {}", format(best))
 
 # My results show:
-# max_depth - , min_child_weight - , learning_rate - , subsample - , colsample_bylevel - ,colsample_bytree - , n_estimators - 
+# max_depth - 3, min_child_weight - 0.01, learning_rate - 0.045, subsample - 0.75,
+# colsample_bylevel - 0.5 ,colsample_bytree - 0.75, n_estimators - 95
+
 
 # %% Let's train the model fully ?
 
-x = 2
+# We should use XGBoost, that seemed to give the best results
+
+xgboost = XGBClassifier(max_depth=3, min_child_weight=0.01, learning_rate=0.045,
+                        subsample=0.75, colsample_bylevel=0.5, colsample_bytree=0.75,
+                        n_estimators=95)
+x_train, x_test, y_train, y_test = train_test_split(x, y, stratify=y)
+xgboost.fit(x_train, y_train)
+pred = xgboost.predict(x_test)
+y_test = y_test.flatten()
+print(accuracy_score(y_test, pred))
